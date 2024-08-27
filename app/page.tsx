@@ -33,16 +33,11 @@ export default function Home() {
   const [callId, setCallId] = useState("");
   const [isInCall, setIsInCall] = useState(false);
 
-  interface CartesiaTTSWebSocket {
-    connect: () => Promise<void>;
-    disconnect: () => void;
-    send: (data: any) => Promise<any>;
-    // Add any other methods or properties that the websocket object has
-  }
+  type CartesiaTTSWebSocket = ReturnType<ReturnType<typeof Cartesia.prototype.tts.websocket>>;
 
   const cartesiaClient = useRef<Cartesia>(new Cartesia({ apiKey: '301dcbc8-7728-4765-b73e-2522cff3c96e' }));
   const ttsWebsocket = useRef<CartesiaTTSWebSocket | null>(null);
-
+  
   const [isPlaying, setIsPlaying] = useState(false);
 
   const [isMuted, setIsMuted] = useState(false);
