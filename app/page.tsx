@@ -335,7 +335,7 @@ export default function Home() {
 					</button>
 				</div>
 				<div className="bg-green-100 p-6 rounded-lg shadow-md">
-					<p className="text-xl font-bold mb-2">Partner's language:</p>
+          <p className="text-xl font-bold mb-2">{"Partner's language:"}</p>
 					<p className="text-lg">{languages.find(lang => lang.code === partnerLanguage)?.name || 'Not selected'}</p>
 				</div>
 				</>
