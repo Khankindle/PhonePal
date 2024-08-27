@@ -7,6 +7,7 @@ import { WebPlayer, Cartesia } from "@cartesia/cartesia-js";
 import { Phone, Plus, Mic, MicOff } from 'lucide-react';
 
 const languages = [
+  { code: "", name: "Not Selected" },
   { code: "en", name: "English" },
   { code: "es", name: "Spanish" },
   { code: "fr", name: "French" },
@@ -19,15 +20,11 @@ interface CustomWebSocket extends WebSocket {
 
 export default function Home() {
   const [step, setStep] = useState<'initial' | 'joinCall' | 'profile' | 'inCall'>('initial');
-  const [selectedLanguage, setSelectedLanguage] = useState("en");
+  const [selectedLanguage, setSelectedLanguage] = useState("");
   const [userVoiceId, setUserVoiceId] = useState<string | null>(null);
   const [websocket, setWebsocket] = useState<WebSocket | null>(null);
   const [partnerLanguage, setPartnerLanguage] = useState("");
   const [input, setInput] = useState("");
-  
-  // Add queueing
-  const audioQueue = useRef<{ text: string, voiceId: string, language: string }[]>([]);
-  const [isProcessingQueue, setIsProcessingQueue] = useState(false);
 
   const player = usePlayer();
   const [audioContexts, setAudioContexts] = useState({});
@@ -41,6 +38,10 @@ export default function Home() {
   const [isPlaying, setIsPlaying] = useState(false);
 
   const [isMuted, setIsMuted] = useState(false);
+
+  // Queueing logic 
+  const [audioQueue, setAudioQueue] = useState([]); // Array that is used as a queue 
+  const [isAudioPlaying, setIsAudioPlaying] = useState(false);
 
   useEffect(() => {
     const initTTSWebsocket = async () => {
@@ -85,8 +86,12 @@ export default function Home() {
             setStep('inCall');
           } else if (data.type === 'translation') {
             console.log("Received translation:", data);
-            await generateAndPlayAudio(data.translation, data.voiceId, data.language); 
-			// Only play the next generateAndPlayAudio once the last one is done playing in the 
+            
+            // If get a new translation and there is already one in the queue then don't send next one yet 
+            // Add the translation text to a queue instead of the raw audio, then when last one finished call generateAndPlayAudio again 
+            // Figure out a way to know when the last one is done playing 
+
+            await generateAndPlayAudio(data.translation, data.voiceId, data.language);
 
           }
         } catch (error) {
@@ -101,47 +106,53 @@ export default function Home() {
   }, []);
 
   const generateAndPlayAudio = async (text, voiceId, language) => {
-	console.log("language", language)
-	console.log("selectedLanguage", selectedLanguage)
-	if (!ttsWebsocket.current) return; // Only play if the user is the receiver
-  
-	console.log("Generating audio for:", text, voiceId, language);
-	const contextId = Date.now().toString();
-	const chunks = text.split(/(?<=[.!?])\s+/);
-	console.log("chunks???", chunks)
-  
-	setIsPlaying(true);
-	// Add to the queue 
-  
-	try {
-	  // Send the first chunk and start playing
-	  const initialResponse = await ttsWebsocket.current.send({
-		model_id: language === "en" ? "sonic-english" : "sonic-multilingual",
-		voice: { mode: "id", id: voiceId },
-		transcript: chunks[0],
-		context_id: contextId,
-		continue: chunks.length > 1,
-		language: language
-	  });
-  
-	  // Start playing the first chunk
-	  cartesiaPlayer.current.play(initialResponse.source);
-	  console.log(chunks[0])
-  
-	  // Send the remaining chunks
-	  for (let i = 1; i < chunks.length; i++) {
-		const response = await ttsWebsocket.current.send({
-		  model_id: language === "en" ? "sonic-english" : "sonic-multilingual",
-		  voice: { mode: "id", id: voiceId },
-		  transcript: chunks[i],
-		  context_id: contextId,
-		  continue: i < chunks.length - 1,
-		  language: language
-		});
-  
-		// The WebPlayer should automatically handle appending these chunks
-		console.log(`Sent chunk ${i + 1}/${chunks.length}`);
-		console.log(chunks[i]);
+    console.log("language", language)
+    console.log("selectedLanguage", selectedLanguage)
+    if (!ttsWebsocket.current) return; // Only play if the user is the receiver
+    
+    console.log("Generating audio for:", text, voiceId, language);
+    console.log(language === "en" ? "sonic-english" : "sonic-multilingual")
+    const contextId = Date.now().toString();
+    const chunks = text.split(/(?<=[.!?])\s+/);
+    console.log("chunks::: ", chunks)
+    
+    setIsPlaying(true);
+    // Add to the queue 
+    
+    try {
+      // Send the first chunk and start playing
+      const initialResponse = await ttsWebsocket.current.send({
+        model_id: language === "en" ? "sonic-english" : "sonic-multilingual",
+        voice: { mode: "id", id: voiceId },
+        transcript: chunks[0],
+        context_id: contextId,
+        continue: chunks.length > 1,
+        language: language
+      });
+    
+      // Start playing the first chunk
+      cartesiaPlayer.current.play(initialResponse.source);
+      console.log(chunks[0])
+    
+      // Send the remaining chunks
+    for (let i = 1; i < chunks.length; i++) {
+      const response = await ttsWebsocket.current.send({
+          model_id: language === "en" ? "sonic-english" : "sonic-multilingual",
+          voice: { mode: "id", id: voiceId },
+          transcript: chunks[i],
+          context_id: contextId,
+          continue: i < chunks.length - 1,
+          language: language
+      });
+
+      /* Here if if i == (chunks.length - 1), i.e. is the last chunk then the 
+         last chunk is done processing and we should move to the next item in the queue if there is one. 
+         Somehow the queue should be updated from before to call 
+      */
+   
+      // The WebPlayer should automatically handle appending these chunks
+      console.log(`Sent chunk ${i + 1}/${chunks.length}`);
+      console.log(chunks[i]);
 	  }
 
 	} catch (error) {
@@ -362,6 +373,7 @@ export default function Home() {
               {userVoiceId && <p className="mt-2 text-sm text-gray-500">Voice ID: {userVoiceId}</p>}
             </div>
           </div>
+          
         </div>
       )}
 

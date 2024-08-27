@@ -267,14 +267,22 @@ nextApp.prepare().then(() => {
     return { response, contextId };
   }
 
-  app.all('*', (req, res) => {
-    return nextHandler(req, res);
-  });
+  // app.all('*', (req, res) => {
+  //   return nextHandler(req, res);
+  // });
 
-  const PORT = 3010;
+  // const PORT = 3010;
+  // server.listen(PORT, () => {
+  //   console.log(`Server is running on port ${PORT}`);
+  // });
+
+  const PORT = process.env.PORT || 3010;
   server.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);
   });
+
+  // Add this line to handle Next.js routing
+  app.all('*', (req, res) => nextHandler(req, res));
 
   process.on('SIGINT', () => {
     console.log('SIGINT signal received: closing HTTP server')
