@@ -17,4 +17,4 @@ This project was bootstrapped from [swift](https://github.com/ai-ng/swift.git).
 -   Run `pnpm install` to install dependencies.
 -   Run `node server.mjs` to run the server-side. 
 -   Run `pnpm dev` to start the client-side.
-
+-   To test out PhonePal with two callers, create two `http://localhost:3000` instances on your browser and have them join the same call
