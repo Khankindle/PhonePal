@@ -11,6 +11,8 @@ import humanId from 'human-id';
 import Cartesia from "@cartesia/cartesia-js";
 import next from 'next';
 import dotenv from 'dotenv';
+import fs from 'fs';
+import https from 'https';
 
 // const next = require('next');
 const dev = process.env.NODE_ENV !== 'production';
@@ -19,9 +21,20 @@ const nextHandler = nextApp.getRequestHandler();
 
 nextApp.prepare().then(() => {
   const app = express();
-  const server = http.createServer(app);
-  // const wss = new WebSocket.Server({ server });
-  const wss = new WebSocketServer({ server });
+
+   // Read SSL certificate files
+  //  const privateKey = fs.readFileSync('key.pem', 'utf8');
+  //  const certificate = fs.readFileSync('cert.pem', 'utf8');
+ 
+  //  const credentials = {
+  //    key: privateKey,
+  //    cert: certificate
+  //  };
+
+   // Create HTTPS server
+  //  const server = https.createServer(credentials, app);
+   const server = http.createServer(app);
+   const wss = new WebSocketServer({ server });
 
 
   app.use(cors({
@@ -167,7 +180,29 @@ nextApp.prepare().then(() => {
 
       const clonedVoice = await cloneResponse.json();
 
-      // Create a voice with the embedding
+      // Localize the voice
+      const localizeResponse = await fetch('https://api.cartesia.ai/voices/localize', {
+        method: 'POST',
+        headers: {
+          'Cartesia-Version': '2024-06-10',
+          'X-API-Key': process.env.CARTESIA_API_KEY,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          embedding: clonedVoice.embedding,
+          language: req.body.receiverLanguage,
+          original_speaker_gender: req.body.gender
+        })
+      });
+
+      if (!localizeResponse.ok) {
+        throw new Error(`Failed to localize voice: ${await localizeResponse.text()}`);
+      }
+
+      const localizedVoice = await localizeResponse.json();
+
+      
+      // Create a voice with the localized embedding
       const createVoiceResponse = await fetch('https://api.cartesia.ai/voices', {
         method: 'POST',
         headers: {
@@ -176,9 +211,10 @@ nextApp.prepare().then(() => {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          name: `Cloned Voice ${Date.now()}`,
-          description: "A voice cloned from an audio sample.",
-          embedding: clonedVoice.embedding
+          name: `Localized Voice ${Date.now()}`,
+          description: "A voice cloned and localized from an audio sample.",
+          embedding: localizedVoice.embedding,
+          language: req.body.receiverLanguage,
         })
       });
 
@@ -276,8 +312,8 @@ nextApp.prepare().then(() => {
   //   console.log(`Server is running on port ${PORT}`);
   // });
 
-  const PORT = process.env.PORT || 3010;
-  server.listen(PORT, () => {
+  const PORT = 3010;
+  server.listen(PORT, '0.0.0.0', () => {
     console.log(`Server is running on port ${PORT}`);
   });
 

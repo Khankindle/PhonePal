@@ -24,6 +24,7 @@ export default function Home() {
   const [userVoiceId, setUserVoiceId] = useState<string | null>(null);
   const [websocket, setWebsocket] = useState<WebSocket | null>(null);
   const [partnerLanguage, setPartnerLanguage] = useState("");
+  const [gender, setGender] = useState("male");
   const [input, setInput] = useState("");
 
   const player = usePlayer();
@@ -33,11 +34,8 @@ export default function Home() {
   const [callId, setCallId] = useState("");
   const [isInCall, setIsInCall] = useState(false);
 
-  type CartesiaTTSWebSocket = ReturnType<ReturnType<typeof Cartesia.prototype.tts.websocket>>;
-
-  const cartesiaClient = useRef<Cartesia>(new Cartesia({ apiKey: '301dcbc8-7728-4765-b73e-2522cff3c96e' }));
-  const ttsWebsocket = useRef<CartesiaTTSWebSocket | null>(null);
-  
+  const cartesiaClient = useRef(new Cartesia({ apiKey: '301dcbc8-7728-4765-b73e-2522cff3c96e' }));
+  const ttsWebsocket = useRef(null);
   const [isPlaying, setIsPlaying] = useState(false);
 
   const [isMuted, setIsMuted] = useState(false);
@@ -66,7 +64,7 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    const ws = new WebSocket('ws://localhost:3010') as CustomWebSocket;
+    const ws = new WebSocket('ws://192.168.0.79:3010/') as CustomWebSocket;
     setWebsocket(ws);
     
     ws.onopen = () => {
@@ -147,11 +145,6 @@ export default function Home() {
           continue: i < chunks.length - 1,
           language: language
       });
-
-      /* Here if if i == (chunks.length - 1), i.e. is the last chunk then the 
-         last chunk is done processing and we should move to the next item in the queue if there is one. 
-         Somehow the queue should be updated from before to call 
-      */
    
       // The WebPlayer should automatically handle appending these chunks
       console.log(`Sent chunk ${i + 1}/${chunks.length}`);
@@ -181,7 +174,7 @@ export default function Home() {
         formData.append('receiverLanguage', partnerLanguage || 'es');
         formData.append('callId', callId);
 
-        const response = await fetch(`http://localhost:3010/process-audio`, {
+        const response = await fetch(`http://192.168.0.79:3010/process-audio`, {
           method: 'POST',
           body: formData
         });
@@ -259,8 +252,13 @@ export default function Home() {
     const file = e.target.files?.[0];
     if (file) {
       const formData = new FormData();
+      console.log("gender", gender)
+      console.log("partnerLanguage", partnerLanguage)
       formData.append('voiceSample', file);
-      const response = await fetch(`http://localhost:3010/clone-voice`, {
+      formData.append('gender', gender);
+      formData.append('receiverLanguage', partnerLanguage || 'en');
+      
+      const response = await fetch(`http://192.168.0.79:3010/clone-voice`, {
         method: 'POST',
         body: formData
       });
@@ -356,6 +354,19 @@ export default function Home() {
                 {languages.map(lang => (
                   <option key={lang.code} value={lang.code}>{lang.name}</option>
                 ))}
+              </select>
+            </div>
+
+            <div className="mb-4">
+              <label htmlFor="gender-select" className="block text-sm font-medium text-gray-700 mb-2">Select your gender: </label>
+              <select
+                id="gender-select"
+                value={gender}
+                onChange={(e) => setGender(e.target.value)}
+                className="block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md"
+              >
+                <option value="male">Male</option>
+                <option value="female">Female</option>
               </select>
             </div>
 
