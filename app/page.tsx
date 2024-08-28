@@ -6,6 +6,7 @@ import { useMicVAD, utils } from "@ricky0123/vad-react";
 import { WebPlayer, Cartesia } from "@cartesia/cartesia-js";
 import { Phone, Plus, Mic, MicOff } from 'lucide-react';
 
+// Languages supported on phonepal
 const languages = [
   { code: "", name: "Not Selected" },
   { code: "en", name: "English" },
@@ -19,6 +20,7 @@ interface CustomWebSocket extends WebSocket {
 }
 
 export default function Home() {
+
   const [step, setStep] = useState<'initial' | 'joinCall' | 'profile' | 'inCall'>('initial');
   const [selectedLanguage, setSelectedLanguage] = useState("");
   const [userVoiceId, setUserVoiceId] = useState<string | null>(null);
@@ -26,23 +28,14 @@ export default function Home() {
   const [partnerLanguage, setPartnerLanguage] = useState("");
   const [gender, setGender] = useState("male");
   const [input, setInput] = useState("");
-
   const player = usePlayer();
-  const [audioContexts, setAudioContexts] = useState({});
   const cartesiaPlayer = useRef(new WebPlayer({ bufferDuration: 0.5 }));
-
   const [callId, setCallId] = useState("");
   const [isInCall, setIsInCall] = useState(false);
-
-  const cartesiaClient = useRef(new Cartesia({ apiKey: '301dcbc8-7728-4765-b73e-2522cff3c96e' }));
+  const cartesiaClient = useRef(new Cartesia({ apiKey: process.env.NEXT_PUBLIC_CARTESIA_API_KEY }));
   const ttsWebsocket = useRef(null);
   const [isPlaying, setIsPlaying] = useState(false);
-
   const [isMuted, setIsMuted] = useState(false);
-
-  // Queueing logic 
-  const [audioQueue, setAudioQueue] = useState([]); // Array that is used as a queue 
-  const [isAudioPlaying, setIsAudioPlaying] = useState(false);
 
   useEffect(() => {
     const initTTSWebsocket = async () => {
@@ -64,7 +57,7 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    const ws = new WebSocket('ws://192.168.0.79:3010/') as CustomWebSocket;
+    const ws = new WebSocket('ws://localhost:3010') as CustomWebSocket;
     setWebsocket(ws);
     
     ws.onopen = () => {
@@ -87,11 +80,6 @@ export default function Home() {
             setStep('inCall');
           } else if (data.type === 'translation') {
             console.log("Received translation:", data);
-            
-            // If get a new translation and there is already one in the queue then don't send next one yet 
-            // Add the translation text to a queue instead of the raw audio, then when last one finished call generateAndPlayAudio again 
-            // Figure out a way to know when the last one is done playing 
-
             await generateAndPlayAudio(data.translation, data.voiceId, data.language);
 
           }
@@ -107,18 +95,13 @@ export default function Home() {
   }, []);
 
   const generateAndPlayAudio = async (text, voiceId, language) => {
-    console.log("language", language)
-    console.log("selectedLanguage", selectedLanguage)
+
     if (!ttsWebsocket.current) return; // Only play if the user is the receiver
     
-    console.log("Generating audio for:", text, voiceId, language);
-    console.log(language === "en" ? "sonic-english" : "sonic-multilingual")
     const contextId = Date.now().toString();
     const chunks = text.split(/(?<=[.!?])\s+/);
-    console.log("chunks::: ", chunks)
     
     setIsPlaying(true);
-    // Add to the queue 
     
     try {
       // Send the first chunk and start playing
@@ -135,7 +118,7 @@ export default function Home() {
       cartesiaPlayer.current.play(initialResponse.source);
       console.log(chunks[0])
     
-      // Send the remaining chunks
+    // Send the remaining chunks
     for (let i = 1; i < chunks.length; i++) {
       const response = await ttsWebsocket.current.send({
           model_id: language === "en" ? "sonic-english" : "sonic-multilingual",
@@ -145,18 +128,14 @@ export default function Home() {
           continue: i < chunks.length - 1,
           language: language
       });
-   
-      // The WebPlayer should automatically handle appending these chunks
-      console.log(`Sent chunk ${i + 1}/${chunks.length}`);
-      console.log(chunks[i]);
-	  }
+    
+    }
 
-	} catch (error) {
-	  console.error("Error in audio generation or playback:", error);
-	} finally {
-	  setIsPlaying(false);
-	  // This is where we know we can play something else in the queue 
-	}
+  } catch (error) {
+    console.error("Error in audio generation or playback:", error);
+  } finally {
+    setIsPlaying(false);
+  }
   };
 
   const vad = useMicVAD({
@@ -174,7 +153,7 @@ export default function Home() {
         formData.append('receiverLanguage', partnerLanguage || 'es');
         formData.append('callId', callId);
 
-        const response = await fetch(`http://192.168.0.79:3010/process-audio`, {
+        const response = await fetch(`http://localhost:3010/process-audio`, {
           method: 'POST',
           body: formData
         });
@@ -258,7 +237,7 @@ export default function Home() {
       formData.append('gender', gender);
       formData.append('receiverLanguage', partnerLanguage || 'en');
       
-      const response = await fetch(`http://192.168.0.79:3010/clone-voice`, {
+      const response = await fetch(`http://localhost:3010/clone-voice`, {
         method: 'POST',
         body: formData
       });
@@ -318,30 +297,30 @@ export default function Home() {
         </div>
       )}
 
-		{(step === 'profile' || step === 'inCall') && (
-			<div className="space-y-6">
-			{step === 'inCall' && (
-				<>
-				<div className="bg-white p-6 rounded-lg shadow-md">
-					<p className="text-xl font-bold mb-2">In call: {callId}</p>
-					<p className="text-md">{vad.userSpeaking && !isMuted ? "Speaking..." : "Not speaking"}</p>
-					<button
-					onClick={toggleMute}
-					className={`mt-2 px-4 py-2 rounded-full flex items-center ${
-						isMuted ? 'bg-red-500 hover:bg-red-600' : 'bg-green-500 hover:bg-green-600'
-					} text-white transition-colors duration-300`}
-					>
-					{isMuted ? <MicOff size={20} /> : <Mic size={20} />}
-					<span className="ml-2">{isMuted ? 'Unmute' : 'Mute'}</span>
-					</button>
-				</div>
-				<div className="bg-green-100 p-6 rounded-lg shadow-md">
+    {(step === 'profile' || step === 'inCall') && (
+      <div className="space-y-6">
+      {step === 'inCall' && (
+        <>
+        <div className="bg-white p-6 rounded-lg shadow-md">
+          <p className="text-xl font-bold mb-2">In call: {callId}</p>
+          <p className="text-md">{vad.userSpeaking && !isMuted ? "Speaking..." : "Not speaking"}</p>
+          <button
+          onClick={toggleMute}
+          className={`mt-2 px-4 py-2 rounded-full flex items-center ${
+            isMuted ? 'bg-red-500 hover:bg-red-600' : 'bg-green-500 hover:bg-green-600'
+          } text-white transition-colors duration-300`}
+          >
+          {isMuted ? <MicOff size={20} /> : <Mic size={20} />}
+          <span className="ml-2">{isMuted ? 'Unmute' : 'Mute'}</span>
+          </button>
+        </div>
+        <div className="bg-green-100 p-6 rounded-lg shadow-md">
           <p className="text-xl font-bold mb-2">{"Partner's language:"}</p>
-					<p className="text-lg">{languages.find(lang => lang.code === partnerLanguage)?.name || 'Not selected'}</p>
-				</div>
-				</>
-			)}
-		  
+          <p className="text-lg">{languages.find(lang => lang.code === partnerLanguage)?.name || 'Not selected'}</p>
+        </div>
+        </>
+      )}
+      
           <div className="bg-amber-50 p-6 rounded-lg shadow-md">
             <div className="mb-4">
               <label htmlFor="language-select" className="block text-sm font-medium text-gray-700 mb-2">Select your language: </label>
@@ -405,5 +384,5 @@ export default function Home() {
       />
     </div>
   );
-  
+
 }

@@ -11,10 +11,7 @@ import humanId from 'human-id';
 import Cartesia from "@cartesia/cartesia-js";
 import next from 'next';
 import dotenv from 'dotenv';
-import fs from 'fs';
-import https from 'https';
 
-// const next = require('next');
 const dev = process.env.NODE_ENV !== 'production';
 const nextApp = next({ dev });
 const nextHandler = nextApp.getRequestHandler();
@@ -22,20 +19,8 @@ const nextHandler = nextApp.getRequestHandler();
 nextApp.prepare().then(() => {
   const app = express();
 
-   // Read SSL certificate files
-  //  const privateKey = fs.readFileSync('key.pem', 'utf8');
-  //  const certificate = fs.readFileSync('cert.pem', 'utf8');
- 
-  //  const credentials = {
-  //    key: privateKey,
-  //    cert: certificate
-  //  };
-
-   // Create HTTPS server
-  //  const server = https.createServer(credentials, app);
    const server = http.createServer(app);
    const wss = new WebSocketServer({ server });
-
 
   app.use(cors({
     origin: '*',
@@ -44,21 +29,17 @@ nextApp.prepare().then(() => {
   }));
 
   const upload = multer({ storage: multer.memoryStorage() });
-
-  // require('dotenv').config({ path: '.env.local' });
+  
   dotenv.config({ path: '.env.local' });
-  // const groqClient = new groq.Groq({ apiKey: process.env.GROQ_API_KEY });
   const groqClient = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
-  // const clients = new Map();
   const calls = new Map(); 
   const clientLanguages = new Map();
 
   wss.on('connection', (ws) => {
     
     const clientId = Date.now().toString();
-    // clients.set(clientId, { ws, language: null, voiceId: null });
-    console.log("THIS IS A CLIENT ID", clientId)
+    console.log("CLIENT ID : ", clientId)
     clientLanguages.set(clientId, 'en');
 
     ws.on('message', (message) => {
@@ -123,6 +104,7 @@ nextApp.prepare().then(() => {
     }
   }
 
+  // Main function which transcribes and translates and sends data 
   app.post('/process-audio', upload.single('audio'), async (req, res) => {
     try {
       const voiceId = req.body.voiceId || "default-voice-id";
@@ -155,6 +137,7 @@ nextApp.prepare().then(() => {
     }
   });  
 
+  // Handles creating voice clone : generates embedding, localizes embedding, then creates a voices 
   app.post('/clone-voice', upload.single('voiceSample'), async (req, res) => {
     try {
       const form = new FormData();
@@ -168,7 +151,7 @@ nextApp.prepare().then(() => {
         method: 'POST',
         headers: {
           'Cartesia-Version': '2024-06-10',
-          'X-API-Key': process.env.CARTESIA_API_KEY,
+          'X-API-Key': process.env.NEXT_PUBLIC_CARTESIA_API_KEY,
           ...form.getHeaders()
         },
         body: form
@@ -185,7 +168,7 @@ nextApp.prepare().then(() => {
         method: 'POST',
         headers: {
           'Cartesia-Version': '2024-06-10',
-          'X-API-Key': process.env.CARTESIA_API_KEY,
+          'X-API-Key': process.env.NEXT_PUBLIC_CARTESIA_API_KEY,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
@@ -200,14 +183,13 @@ nextApp.prepare().then(() => {
       }
 
       const localizedVoice = await localizeResponse.json();
-
       
       // Create a voice with the localized embedding
       const createVoiceResponse = await fetch('https://api.cartesia.ai/voices', {
         method: 'POST',
         headers: {
           'Cartesia-Version': '2024-06-10',
-          'X-API-Key': process.env.CARTESIA_API_KEY,
+          'X-API-Key': process.env.NEXT_PUBLIC_CARTESIA_API_KEY,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
@@ -230,6 +212,7 @@ nextApp.prepare().then(() => {
     }
   });
 
+  // Helper function which transcribes audio of the sender
   async function getTranscript(rawAudio) {
     const form = new FormData();
     form.append('file', rawAudio.file.buffer, {
@@ -259,6 +242,7 @@ nextApp.prepare().then(() => {
 
   }
 
+  // Helper function which translates text into the target language of the receiver 
   async function translateText(text, targetLanguage) {
     const completion = await groqClient.chat.completions.create({
       messages: [
@@ -279,45 +263,11 @@ nextApp.prepare().then(() => {
     return completion.choices[0].message.content;
   }
 
-  async function generateAudio(text, voiceId, language) {
-    // if (!websocket) {
-    const websocket = cartesia.tts.websocket({
-        container: "raw",
-        encoding: "pcm_f32le",
-        sampleRate: 44100
-      });
-      await websocket.connect();
-    // }
-  
-    const contextId = Date.now().toString(); // Generate a unique context ID
-  
-    const response = await websocket.send({
-      model_id: language === "en" ? "sonic-english" : "sonic-multilingual",
-      voice: { mode: "id", id: voiceId },
-      transcript: text,
-      context_id: contextId,
-      add_timestamps: true,
-      language: language
-    });
-  
-    return { response, contextId };
-  }
-
-  // app.all('*', (req, res) => {
-  //   return nextHandler(req, res);
-  // });
-
-  // const PORT = 3010;
-  // server.listen(PORT, () => {
-  //   console.log(`Server is running on port ${PORT}`);
-  // });
-
   const PORT = 3010;
   server.listen(PORT, '0.0.0.0', () => {
     console.log(`Server is running on port ${PORT}`);
   });
 
-  // Add this line to handle Next.js routing
   app.all('*', (req, res) => nextHandler(req, res));
 
   process.on('SIGINT', () => {
